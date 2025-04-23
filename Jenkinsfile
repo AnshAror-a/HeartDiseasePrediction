@@ -52,8 +52,17 @@ pipeline {
         stage('Deploy Container') {
             steps {
                 script {
+                    // Remove any previous instance of the container
                     bat "docker rm -f heart-disease-container || exit 0"
+                    
+                    // Run the container
                     bat "docker run -d --name heart-disease-container -p 5000:5000 ${DOCKER_IMAGE}"
+
+                    // Check if the container is running
+                    bat "docker ps"
+
+                    // Fetch logs from the container to troubleshoot
+                    bat "docker logs heart-disease-container"
                 }
             }
         }
