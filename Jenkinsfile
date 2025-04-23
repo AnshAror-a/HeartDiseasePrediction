@@ -9,20 +9,25 @@ pipeline {
     }
 
     triggers {
-        githubPush() // Auto trigger on GitHub push
+        githubPush() // Auto-trigger on GitHub push
     }
 
     stages {
 
-        stage('Clone Repository') {
+        stage('Checkout Source Code') {
             steps {
-                git 'https://github.com/AnshAror-a/HeartDiseasePrediction.git'
+                checkout scm // Uses the Git repo configured in the Jenkins job
             }
         }
 
-        stage('Install Dependencies (Optional for Pre-check)') {
+        stage('Install Dependencies (Pre-check)') {
             steps {
-                sh 'pip install -r requirements.txt'
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                    sh '''
+                        echo "Installing dependencies..."
+                        pip install -r requirements.txt
+                    '''
+                }
             }
         }
 
@@ -30,6 +35,7 @@ pipeline {
             steps {
                 script {
                     withEnv(["DOCKER_CLIENT_TIMEOUT=${DOCKER_CLIENT_TIMEOUT}", "COMPOSE_HTTP_TIMEOUT=${COMPOSE_HTTP_TIMEOUT}"]) {
+                        echo "Building Docker image: ${DOCKER_IMAGE}"
                         docker.build("${DOCKER_IMAGE}")
                     }
                 }
@@ -40,11 +46,12 @@ pipeline {
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh """
-                            echo Logging in to Docker Hub...
+                        sh '''
+                            echo "Logging into Docker Hub..."
                             docker login -u $DOCKER_USER -p $DOCKER_PASS
+                            echo "Pushing Docker image to Docker Hub..."
                             docker push ${DOCKER_IMAGE}
-                        """
+                        '''
                     }
                 }
             }
@@ -53,9 +60,10 @@ pipeline {
         stage('Deploy Container') {
             steps {
                 script {
-                    // Remove previous container if running
+                    echo "Cleaning up old container if it exists..."
                     sh "docker rm -f heart-disease-container || true"
-                    // Run new container on port 5000
+
+                    echo "Deploying new container from image ${DOCKER_IMAGE}..."
                     sh "docker run -d --name heart-disease-container -p 5000:5000 ${DOCKER_IMAGE}"
                 }
             }
@@ -66,13 +74,30 @@ pipeline {
         success {
             mail to: 'ansharora5971@gmail.com',
                  subject: "✅ Build Success - #${env.BUILD_NUMBER}",
-                 body: "Heart Disease Prediction pipeline executed successfully!"
+                 body: """Hello Ansh,
+
+Your Jenkins pipeline for Heart Disease Prediction has executed **successfully**.
+
+🛠️ Build Number: #${env.BUILD_NUMBER}
+📦 Docker Image: ${DOCKER_IMAGE}
+
+Regards,
+Jenkins
+"""
         }
 
         failure {
             mail to: 'ansharora5971@gmail.com',
                  subject: "❌ Build Failure - #${env.BUILD_NUMBER}",
-                 body: "Jenkins pipeline failed. Please check the logs."
+                 body: """Hello Ansh,
+
+Your Jenkins pipeline for Heart Disease Prediction has **failed**.
+
+Please check the Jenkins logs for more information.
+
+Regards,
+Jenkins
+"""
         }
     }
 }
